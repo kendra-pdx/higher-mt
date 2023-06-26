@@ -1,4 +1,4 @@
-use higher::{Apply, Bind, Functor, Monad, Pure};
+use higher::*;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct OptionT<M> {
@@ -11,13 +11,14 @@ impl<M> From<M> for OptionT<M> {
     }
 }
 
-impl<'a, A, M> Functor<'a, A> for OptionT<M>
+impl<'a, A: 'a, M> Functor<'a, A> for OptionT<M>
 where
+    A: 'a,
     M: Functor<'a, Option<A>>,
 {
-    type Target<B> = OptionT<<M as Functor<'a, Option<A>>>::Target<Option<B>>>;
+    type Target<B: 'a> = OptionT<M::Target<Option<B>>>;
 
-    fn fmap<B, F>(self, f: F) -> Self::Target<B>
+    fn fmap<B: 'a, F>(self, f: F) -> Self::Target<B>
     where
         F: Fn(A) -> B + 'a,
     {
@@ -46,44 +47,41 @@ where
     A: 'a,
     M: Apply<'a, Option<A>>,
 {
-    type Target<B> = OptionT<<M as Apply<'a, Option<A>>>::Target<Option<B>>> where B: 'a;
-
-    fn apply<B>(
-        self,
-        f: <Self as Apply<'a, A>>::Target<higher::apply::ApplyFn<'a, A, B>>,
-    ) -> <Self as Apply<'a, A>>::Target<B>
-    where
-        B: 'a,
-    {
-        todo!();
+    fn apply<B: 'a>(self, f: Self::Target<higher::apply::ApplyFn<'a, A, B>>) -> Self::Target<B> {
+        todo!()
     }
 }
 
-impl<'a, A, M> Bind<'a, A> for OptionT<M>
+impl<'a, A: 'a, M> Bind<'a, A> for OptionT<M>
 where
-    M: Pure<Option<A>> + Bind<'a, Option<A>>,
+    M: Monad<'a, Option<A>>,
 {
-    type Target<B> = OptionT<M::Target<Option<B>>> 
-        where M: Bind<'a, Option<A>> + Pure<Option<A>>;
-
-    fn bind<B, F>(self, f: F) -> Self::Target<B>
+    fn bind<B, F: 'a>(self, f: F) -> Self::Target<B>
     where
-        F: Fn(A) -> Self::Target<B> + 'a,
+        F: Fn(A) -> Self::Target<B>,
     {
-        let x: M::Target<Option<B>> = self.value.bind(move |oa| {
-            let x = match oa {
-                Some(a) => f(a).value,
-                None => todo!(), // M::pure(None),
-            };
-            x
+        let nv = self.value.bind(move |ov| {
+            match ov {
+                Some(v) => f(v).value,
+                None => {
+                    // let b: Option<B> = None;
+                    // let pb: M::Target<Option<B>> = M::Target::<Option<B>>::pure(b);
+                    // pb
+                    todo!()
+                }
+            }
         });
-        OptionT { value: x }
+
+        OptionT { value: nv }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(PartialEq, Eq, Debug)]
+    enum TestErr {}
 
     fn upper(s: String) -> String {
         s.to_uppercase()
@@ -122,5 +120,19 @@ mod tests {
         let ot1 = OptionT::from(Some(Some(String::from("a"))));
         let ot2 = ot1.bind(|o| OptionT::pure(Some(upper(o))));
         assert_eq!(ot2.value, Some(Some("A".to_string())))
+    }
+    #[test]
+
+    fn test_option_option_bind_empty() {
+        let ot1 = OptionT::from(Some(None));
+        let ot2 = ot1.bind(|o| OptionT::pure(Some(upper(o))));
+        assert_eq!(ot2.value, Some(None))
+    }
+
+    #[test]
+    fn result_of() {
+        let ro1: Result<Option<String>, TestErr> = Ok(Some("a".to_string()));
+        let ro2 = OptionT::from(ro1).fmap(upper).value;
+        assert_eq!(ro2, Ok(Some("A".to_string())))
     }
 }
