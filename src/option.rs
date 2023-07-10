@@ -1,4 +1,4 @@
-use higher::{Apply, Bind, Functor, Monad, Pure};
+use higher::{Apply, Bind, Functor, Pure};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct OptionT<M> {
@@ -64,20 +64,33 @@ where
     M: Pure<Option<A>> + Bind<'a, Option<A>>,
 {
     type Target<B> = OptionT<M::Target<Option<B>>> 
-        where M: Bind<'a, Option<A>> + Pure<Option<A>>;
+        where M: Bind<'a, Option<A>>;
 
     fn bind<B, F>(self, f: F) -> Self::Target<B>
     where
         F: Fn(A) -> Self::Target<B> + 'a,
     {
-        let x: M::Target<Option<B>> = self.value.bind(move |oa| {
-            let x = match oa {
+        let new_value: M::Target<Option<B>> = self.value.bind(move |oa| {
+            match oa {
                 Some(a) => f(a).value,
-                None => todo!(), // M::pure(None),
-            };
-            x
+
+                /*
+                i believe that this is the right expression, however i cannot figure out
+                how i can constrain `M::Target<B>: Pure<B>` in this code.
+                • the definition of the `Bind` interface has specific contraints that
+                  cannot be modified.
+                • `<B>` is only defined for this function, so it it can't be constrained
+                  for the impl. `<B>` is not there… but I think that's where I want it
+                  to be.
+
+                -- no function or associated item named `pure` found for associated
+                   type `<M as Bind<'a, Option<A>>>::Target<B>` in the current scope
+                */
+                //None => M::Target::<B>::pure(None),
+                None => todo!(),
+            }
         });
-        OptionT { value: x }
+        OptionT { value: new_value }
     }
 }
 
